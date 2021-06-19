@@ -71,21 +71,19 @@ module PgHero
       def unused_indexes(max_scans: 50, across: [])
         result = select_all_size <<-SQL
           SELECT
-            schemaname AS schema,
-            relname AS table,
-            indexrelname AS index,
-            pg_relation_size(i.indexrelid) AS size_bytes,
-            idx_scan as index_scans
-          FROM
-            pg_stat_user_indexes ui
-          INNER JOIN
-            pg_index i ON ui.indexrelid = i.indexrelid
-          WHERE
-            NOT indisunique
-            AND idx_scan <= #{max_scans.to_i}
-          ORDER BY
-            pg_relation_size(i.indexrelid) DESC,
-            relname ASC
+            s.schemaname,
+            s.relname AS tablename,
+            s.indexrelname AS indexname,
+            pg_relation_size(s.indexrelid) AS index_size
+          FROM pg_catalog.pg_stat_user_indexes s
+          JOIN pg_catalog.pg_index i ON s.indexrelid = i.indexrelid
+          WHERE s.idx_scan <= #{max_scans.to_i}       -- has never been scanned
+          AND 0 <> ALL (i.indkey)                     -- no index column is an expression
+          AND NOT i.indisunique                       -- is not a UNIQUE index
+          AND NOT EXISTS                              -- does not enforce a constraint
+          (SELECT 1 FROM pg_catalog.pg_constraint c
+            WHERE c.conindid = s.indexrelid)
+            ORDER BY pg_relation_size(s.indexrelid) DESC;
         SQL
 
         across.each do |database_id|
