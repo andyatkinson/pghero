@@ -66,7 +66,8 @@ module PgHero
       :slow_queries, :space_growth, :ssl_used?, :stats_connection, :suggested_indexes, :suggested_indexes_by_query,
       :suggested_indexes_enabled?, :system_stats_enabled?, :table_caching, :table_hit_rate, :table_stats,
       :total_connections, :transaction_id_danger, :unused_indexes, :unused_tables, :write_iops_stats,
-      :pg_cron_extension_enabled?, :pg_cron_readable?, :scheduled_jobs, :job_run_details
+      :pg_cron_extension_available?, :pg_cron_extension_enabled?, :pg_cron_readable?,
+      :scheduled_jobs, :job_run_details, :enable_scheduled_jobs
 
     def time_zone=(time_zone)
       @time_zone = time_zone.is_a?(ActiveSupport::TimeZone) ? time_zone : ActiveSupport::TimeZone[time_zone.to_s]

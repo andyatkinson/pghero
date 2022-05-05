@@ -467,6 +467,13 @@ pg_stat_statements.track = all</pre>
   </div>
 <% end %>
 
+<% if @pg_cron_extension_available && !@pg_cron_extension_enabled %>
+  <p>
+    pg_cron extension is available but not enabled.
+    <%= button_to "Enable", enable_scheduled_jobs_path, class: "btn btn-info" %>
+  </p>
+<% end %>
+
 <% if @query_stats_enabled && @slow_queries.any? %>
   <div class="content">
     <h1>Slow Queries</h1>

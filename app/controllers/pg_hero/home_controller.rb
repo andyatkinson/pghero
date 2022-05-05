@@ -376,6 +376,13 @@ module PgHero
       redirect_backward alert: "The database user does not have permission to reset query stats"
     end
 
+    def enable_scheduled_jobs
+      @database.enable_scheduled_jobs
+      redirect_backward notice: "Scheduled Jobs enabled"
+    rescue ActiveRecord::StatementInvalid
+      redirect_backward alert: "The database user does not have permission to enable scheduled jobs"
+    end
+
     def scheduled_jobs
       @scheduled_jobs = @database.scheduled_jobs
       @job_run_details = @database.job_run_details
@@ -410,7 +417,10 @@ module PgHero
     end
 
     def set_scheduled_jobs_enabled
-      @scheduled_jobs_enabled = @database.pg_cron_extension_enabled? && @database.pg_cron_readable?
+      @pg_cron_extension_available = @database.pg_cron_extension_available?
+      @pg_cron_extension_enabled = @database.pg_cron_extension_enabled?
+      @scheduled_jobs_enabled = @database.pg_cron_extension_enabled? &&
+        @database.pg_cron_readable?
     end
 
     def set_suggested_indexes(min_average_time = 0, min_calls = 0)

@@ -1,6 +1,8 @@
 # Scheduled Jobs
 
-The [pg_cron extension](https://github.com/citusdata/pg_cron) is used for scheduled jobs.
+Scheduled Jobs are a way to automate database tasks using the [pg_cron extension](https://github.com/citusdata/pg_cron).
+
+Scheduled Jobs integration in PgHero includes viewing Scheduled Jobs and details that have been captured about jobs that have ran.
 
 ## Installation
 
