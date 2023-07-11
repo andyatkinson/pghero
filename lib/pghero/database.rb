@@ -119,12 +119,6 @@ module PgHero
       @filter_data
     end
 
-    # TODO remove in next major version
-    alias_method :access_key_id, :aws_access_key_id
-    alias_method :secret_access_key, :aws_secret_access_key
-    alias_method :region, :aws_region
-    alias_method :db_instance_identifier, :aws_db_instance_identifier
-
     private
 
     # check adapter lazily
@@ -149,7 +143,6 @@ module PgHero
 
       # resolve spec
       if !url && config["spec"]
-        raise Error, "Spec requires Rails 6+" unless PgHero.spec_supported?
         config_options = {env_name: PgHero.env, PgHero.spec_name_key => config["spec"], PgHero.include_replicas_key => true}
         resolved = ActiveRecord::Base.configurations.configs_for(**config_options)
         raise Error, "Spec not found: #{config["spec"]}" unless resolved

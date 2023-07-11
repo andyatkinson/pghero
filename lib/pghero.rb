@@ -1,30 +1,32 @@
 # dependencies
 require "active_support"
+
+# stdlib
 require "forwardable"
 
 # methods
-require "pghero/methods/basic"
-require "pghero/methods/connections"
-require "pghero/methods/constraints"
-require "pghero/methods/explain"
-require "pghero/methods/indexes"
-require "pghero/methods/kill"
-require "pghero/methods/maintenance"
-require "pghero/methods/queries"
-require "pghero/methods/query_stats"
-require "pghero/methods/replication"
-require "pghero/methods/sequences"
-require "pghero/methods/settings"
-require "pghero/methods/space"
-require "pghero/methods/suggested_indexes"
-require "pghero/methods/system"
-require "pghero/methods/tables"
-require "pghero/methods/users"
-require "pghero/methods/scheduled_jobs"
+require_relative "pghero/methods/basic"
+require_relative "pghero/methods/connections"
+require_relative "pghero/methods/constraints"
+require_relative "pghero/methods/explain"
+require_relative "pghero/methods/indexes"
+require_relative "pghero/methods/kill"
+require_relative "pghero/methods/maintenance"
+require_relative "pghero/methods/queries"
+require_relative "pghero/methods/query_stats"
+require_relative "pghero/methods/replication"
+require_relative "pghero/methods/sequences"
+require_relative "pghero/methods/settings"
+require_relative "pghero/methods/space"
+require_relative "pghero/methods/suggested_indexes"
+require_relative "pghero/methods/system"
+require_relative "pghero/methods/tables"
+require_relative "pghero/methods/users"
+require_relative "pghero/methods/scheduled_jobs"
 
-require "pghero/database"
-require "pghero/engine" if defined?(Rails)
-require "pghero/version"
+require_relative "pghero/database"
+require_relative "pghero/engine" if defined?(Rails)
+require_relative "pghero/version"
 
 module PgHero
   autoload :Connection, "pghero/connection"
@@ -54,15 +56,15 @@ module PgHero
 
   class << self
     extend Forwardable
-    def_delegators :primary_database, :access_key_id, :analyze, :analyze_tables, :autoindex, :autovacuum_danger,
+    def_delegators :primary_database, :aws_access_key_id, :analyze, :analyze_tables, :autoindex, :autovacuum_danger,
       :best_index, :blocked_queries, :connections, :connection_sources, :connection_states, :connection_stats,
-      :cpu_usage, :create_user, :database_size, :db_instance_identifier, :disable_query_stats, :drop_user,
+      :cpu_usage, :create_user, :database_size, :aws_db_instance_identifier, :disable_query_stats, :drop_user,
       :duplicate_indexes, :enable_query_stats, :explain, :historical_query_stats_enabled?, :index_caching,
       :index_hit_rate, :index_usage, :indexes, :invalid_constraints, :invalid_indexes, :kill, :kill_all, :kill_long_running_queries,
       :last_stats_reset_time, :long_running_queries, :maintenance_info, :missing_indexes, :query_stats,
       :query_stats_available?, :query_stats_enabled?, :query_stats_extension_enabled?, :query_stats_readable?,
-      :rds_stats, :read_iops_stats, :region, :relation_sizes, :replica?, :replication_lag, :replication_lag_stats,
-      :reset_query_stats, :reset_stats, :running_queries, :secret_access_key, :sequence_danger, :sequences, :settings,
+      :rds_stats, :read_iops_stats, :aws_region, :relation_sizes, :replica?, :replication_lag, :replication_lag_stats,
+      :reset_query_stats, :reset_stats, :running_queries, :aws_secret_access_key, :sequence_danger, :sequences, :settings,
       :slow_queries, :space_growth, :ssl_used?, :stats_connection, :suggested_indexes, :suggested_indexes_by_query,
       :suggested_indexes_enabled?, :system_stats_enabled?, :table_caching, :table_hit_rate, :table_stats,
       :total_connections, :transaction_id_danger, :unused_indexes, :unused_tables, :write_iops_stats,
@@ -89,12 +91,32 @@ module PgHero
       @password ||= config["password"] || ENV["PGHERO_PASSWORD"]
     end
 
+    # config pattern for https://github.com/ankane/pghero/issues/424
     def stats_database_url
-      @stats_database_url ||= config["stats_database_url"] || ENV["PGHERO_STATS_DATABASE_URL"]
+      @stats_database_url ||= (file_config || {})["stats_database_url"] || ENV["PGHERO_STATS_DATABASE_URL"]
+    end
+
+    # private
+    def explain_enabled?
+      explain_mode.nil? || explain_mode == true || explain_mode == "analyze"
+    end
+
+    # private
+    def explain_mode
+      @config["explain"]
+    end
+
+    def visualize_url
+      @visualize_url ||= config["visualize_url"] || ENV["PGHERO_VISUALIZE_URL"] || "https://tatiyants.com/pev/#/plans/new"
     end
 
     def config
-      @config ||= begin
+      @config ||= file_config || default_config
+    end
+
+    # private
+    def file_config
+      unless defined?(@file_config)
         require "erb"
         require "yaml"
 
@@ -102,43 +124,56 @@ module PgHero
 
         config_file_exists = File.exist?(path)
 
-        config = YAML.load(ERB.new(File.read(path)).result) if config_file_exists
+        config = YAML.safe_load(ERB.new(File.read(path)).result, aliases: true) if config_file_exists
         config ||= {}
 
-        if config[env]
-          config[env]
-        elsif config["databases"] # preferred format
-          config
-        elsif config_file_exists
-          raise "Invalid config file"
-        else
-          databases = {}
-
-          if !ENV["PGHERO_DATABASE_URL"] && spec_supported?
-            ActiveRecord::Base.configurations.configs_for(env_name: env, include_replicas_key => true).each do |db|
-              databases[db.send(spec_name_key)] = {"spec" => db.send(spec_name_key)}
-            end
+        @file_config =
+          if config[env]
+            config[env]
+          elsif config["databases"] # preferred format
+            config
+          elsif config_file_exists
+            raise "Invalid config file"
+          else
+            nil
           end
+      end
 
-          if databases.empty?
-            databases["primary"] = {
-              "url" => ENV["PGHERO_DATABASE_URL"] || connection_config(ActiveRecord::Base)
-            }
-          end
+      @file_config
+    end
 
-          if databases.size == 1
-            databases.values.first.merge!(
-              "db_instance_identifier" => ENV["PGHERO_DB_INSTANCE_IDENTIFIER"],
-              "gcp_database_id" => ENV["PGHERO_GCP_DATABASE_ID"],
-              "azure_resource_id" => ENV["PGHERO_AZURE_RESOURCE_ID"]
-            )
-          end
+    # private
+    def default_config
+      databases = {}
 
-          {
-            "databases" => databases
-          }
+      unless ENV["PGHERO_DATABASE_URL"]
+        ActiveRecord::Base.configurations.configs_for(env_name: env, include_replicas_key => true).each do |db|
+          databases[db.send(spec_name_key)] = {"spec" => db.send(spec_name_key)}
         end
       end
+
+      if databases.empty?
+        databases["primary"] = {
+          "url" => ENV["PGHERO_DATABASE_URL"] || default_connection_config
+        }
+      end
+
+      if databases.size == 1
+        databases.values.first.merge!(
+          "aws_db_instance_identifier" => ENV["PGHERO_DB_INSTANCE_IDENTIFIER"],
+          "gcp_database_id" => ENV["PGHERO_GCP_DATABASE_ID"],
+          "azure_resource_id" => ENV["PGHERO_AZURE_RESOURCE_ID"]
+        )
+      end
+
+      {
+        "databases" => databases
+      }
+    end
+
+    # private
+    def default_connection_config
+      connection_config(ActiveRecord::Base) if ActiveRecord::VERSION::STRING.to_f < 7.1
     end
 
     # ensure we only have one copy of databases
@@ -197,21 +232,16 @@ module PgHero
     # delete previous stats
     # go database by database to use an index
     # stats for old databases are not cleaned up since we can't use an index
-    def clean_query_stats
+    def clean_query_stats(before: nil)
       each_database do |database|
-        database.clean_query_stats
+        database.clean_query_stats(before: before)
       end
     end
 
-    def clean_space_stats
+    def clean_space_stats(before: nil)
       each_database do |database|
-        database.clean_space_stats
+        database.clean_space_stats(before: before)
       end
-    end
-
-    # private
-    def spec_supported?
-      ActiveRecord::VERSION::MAJOR >= 6
     end
 
     # private

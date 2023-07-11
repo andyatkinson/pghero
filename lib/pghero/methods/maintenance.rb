@@ -1,7 +1,7 @@
 module PgHero
   module Methods
     module Maintenance
-      # https://www.postgresql.org/docs/9.1/static/routine-vacuuming.html#VACUUM-FOR-WRAPAROUND
+      # https://www.postgresql.org/docs/current/routine-vacuuming.html#VACUUM-FOR-WRAPAROUND
       # "the system will shut down and refuse to start any new transactions
       # once there are fewer than 1 million transactions left until wraparound"
       # warn when 10,000,000 transactions left
@@ -9,7 +9,7 @@ module PgHero
         max_value = max_value.to_i
         threshold = threshold.to_i
 
-        select_all <<-SQL
+        select_all <<~SQL
           SELECT
             n.nspname AS schema,
             c.relname AS table,
@@ -35,7 +35,7 @@ module PgHero
 
       def vacuum_progress
         if server_version_num >= 90600
-          select_all <<-SQL
+          select_all <<~SQL
             SELECT
               pid,
               phase
@@ -50,7 +50,7 @@ module PgHero
       end
 
       def maintenance_info
-        select_all <<-SQL
+        select_all <<~SQL
           SELECT
             schemaname AS schema,
             relname AS table,

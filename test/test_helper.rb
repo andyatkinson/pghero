@@ -4,11 +4,22 @@ Bundler.require(:default)
 require "minitest/autorun"
 require "minitest/pride"
 require "pg_query"
-require "activerecord-import"
 
 class Minitest::Test
   def database
     @database ||= PgHero.databases[:primary]
+  end
+
+  def with_explain(value)
+    PgHero.stub(:explain_mode, value) do
+      yield
+    end
+  end
+
+  def with_explain_timeout(value)
+    PgHero.stub(:explain_timeout_sec, value) do
+      yield
+    end
   end
 end
 
@@ -35,7 +46,7 @@ states =
       name: "State #{i}"
     }
   end
-State.import states, validate: false
+State.insert_all!(states)
 ActiveRecord::Base.connection.execute("ANALYZE states")
 
 users =
@@ -55,5 +66,5 @@ users =
       updated_at: Time.now - rand(50).days
     }
   end
-User.import users, validate: false
+User.insert_all!(users)
 ActiveRecord::Base.connection.execute("ANALYZE users")

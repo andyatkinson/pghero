@@ -21,7 +21,7 @@ Be sure to [secure the dashboard](#authentication) in production.
 PgHero can suggest indexes to add. To enable, add to your Gemfile:
 
 ```ruby
-gem "pg_query", ">= 0.9.0"
+gem "pg_query", ">= 2"
 ```
 
 and make sure [query stats](#query-stats) are enabled. Read about how it works [here](Suggested-Indexes.md).
@@ -213,7 +213,7 @@ rails generate pghero:config
 
 This allows you to specify multiple databases and change thresholds. Thresholds can be set globally or per-database.
 
-If multiple databases are in the same instance and use historical query stats, PgHero should be configured to capture them together.
+With Postgres < 12, if multiple databases are in the same instance and use historical query stats, PgHero should be configured to capture them together.
 
 ```yml
 databases:
@@ -331,55 +331,13 @@ PgHero.drop_user("ganondorf")
 
 ## Upgrading
 
-### 2.0.0
-
-New features
-
-- Query details page
+### 3.0.0
 
 Breaking changes
 
-- Methods now return symbols for keys instead of strings
-- Methods raise `PgHero::NotEnabled` error when a feature isn’t enabled
-- Requires pg_query 0.9.0+ for suggested indexes
-- Historical query stats require the `pghero_query_stats` table to have `query_hash` and `user` columns
-- Removed `with` option - use:
-
-```ruby
-PgHero.databases[:database2].running_queries
-```
-
-instead of
-
-```ruby
-PgHero.with(:database2) { PgHero.running_queries }
-```
-
-- Removed options from `connection_sources` method
-- Removed `locks` method
-
-### 1.5.0
-
-For query stats grouping by user, create a migration with:
-
-```ruby
-add_column :pghero_query_stats, :user, :text
-```
-
-### 1.3.0
-
-For better query stats grouping with Postgres 9.4+, create a migration with:
-
-```ruby
-add_column :pghero_query_stats, :query_hash, :integer, limit: 8
-```
-
-If you get an error with `queryid`, recreate the `pg_stat_statements` extension.
-
-```sql
-DROP EXTENSION pg_stat_statements;
-CREATE EXTENSION pg_stat_statements;
-```
+- Changed `capture_query_stats` to only reset stats for current database in Postgres 12+
+- Changed `reset_query_stats` to only reset stats for current database (use `reset_instance_query_stats` to reset stats for entire instance)
+- Removed `access_key_id`, `secret_access_key`, `region`, and `db_instance_identifier` methods (use `aws_` prefixed methods instead)
 
 ## Bonus
 

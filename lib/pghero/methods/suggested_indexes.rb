@@ -2,7 +2,7 @@ module PgHero
   module Methods
     module SuggestedIndexes
       def suggested_indexes_enabled?
-        defined?(PgQuery) && Gem::Version.new(PgQuery::VERSION) >= Gem::Version.new("0.9.0") && query_stats_enabled?
+        defined?(PgQuery) && Gem::Version.new(PgQuery::VERSION) >= Gem::Version.new("2") && query_stats_enabled?
       end
 
       # TODO clean this mess
@@ -79,7 +79,7 @@ module PgHero
         suggested_indexes.each do |index|
           p index
           if create
-            connection.execute("CREATE INDEX CONCURRENTLY ON #{quote_table_name(index[:table])} (#{index[:columns].map { |c| quote_table_name(c) }.join(",")})")
+            connection.execute("CREATE INDEX CONCURRENTLY ON #{quote_table_name(index[:table])} (#{index[:columns].map { |c| quote_column_name(c) }.join(",")})")
           end
         end
       end
@@ -104,7 +104,7 @@ module PgHero
         # TODO get schema from query structure, then try search path
         schema = PgHero.connection_config(connection_model)[:schema] || "public"
         if tables.any?
-          row_stats = Hash[table_stats(table: tables, schema: schema).map { |i| [i[:table], i[:estimated_rows]] }]
+          row_stats = table_stats(table: tables, schema: schema).to_h { |i| [i[:table], i[:estimated_rows]] }
           col_stats = column_stats(table: tables, schema: schema).group_by { |i| i[:table] }
         end
 
@@ -126,7 +126,7 @@ module PgHero
             total_rows = row_stats[table].to_i
             index[:rows] = total_rows
 
-            ranks = Hash[col_stats[table].to_a.map { |r| [r[:column], r] }]
+            ranks = col_stats[table].to_a.to_h { |r| [r[:column], r] }
             columns = (where + sort).map { |c| c[:column] }.uniq
 
             if columns.any?
@@ -135,7 +135,7 @@ module PgHero
                 sort = sort.first(first_desc + 1) if first_desc
                 where = where.sort_by { |c| [row_estimates(ranks[c[:column]], total_rows, total_rows, c[:op]), c[:column]] } + sort
 
-                index[:row_estimates] = Hash[where.map { |c| ["#{c[:column]} (#{c[:op] || "sort"})", row_estimates(ranks[c[:column]], total_rows, total_rows, c[:op]).round] }]
+                index[:row_estimates] = where.to_h { |c| ["#{c[:column]} (#{c[:op] || "sort"})", row_estimates(ranks[c[:column]], total_rows, total_rows, c[:op]).round] }
 
                 # no index needed if less than 500 rows
                 if total_rows >= 500
@@ -194,6 +194,7 @@ module PgHero
       end
 
       def best_index_structure(statement)
+        return {error: "Empty statement"} if statement.to_s.empty?
         return {error: "Too large"} if statement.to_s.length > 10000
 
         begin
@@ -202,68 +203,33 @@ module PgHero
           return {error: "Parse error"}
         end
 
-        if PgQuery::VERSION.to_i >= 2
-          return {error: "Unknown structure"} unless tree.stmts.size == 1
+        return {error: "Unknown structure"} unless tree.stmts.size == 1
 
-          tree = tree.stmts.first.stmt
+        tree = tree.stmts.first.stmt
 
-          table = parse_table_v2(tree) rescue nil
-          unless table
-            error =
-              case tree.node
-              when :insert_stmt
-                "INSERT statement"
-              when :variable_set_stmt
-                "SET statement"
-              when :select_stmt
-                if (tree.select_stmt.from_clause.first.join_expr rescue false)
-                  "JOIN not supported yet"
-                end
+        table = parse_table(tree) rescue nil
+        unless table
+          error =
+            case tree.node
+            when :insert_stmt
+              "INSERT statement"
+            when :variable_set_stmt
+              "SET statement"
+            when :select_stmt
+              if (tree.select_stmt.from_clause.first.join_expr rescue false)
+                "JOIN not supported yet"
               end
-            return {error: error || "Unknown structure"}
-          end
-
-          select = tree[tree.node.to_s]
-          where = (select.where_clause ? parse_where_v2(select.where_clause) : []) rescue nil
-          return {error: "Unknown structure"} unless where
-
-          sort = (select.sort_clause ? parse_sort_v2(select.sort_clause) : []) rescue []
-
-          {table: table, where: where, sort: sort}
-        else
-          # TODO remove support for pg_query < 2 in PgHero 3.0
-
-          return {error: "Unknown structure"} unless tree.size == 1
-
-          tree = tree.first
-
-          # pg_query 1.0.0
-          tree = tree["RawStmt"]["stmt"] if tree["RawStmt"]
-
-          table = parse_table(tree) rescue nil
-          unless table
-            error =
-              case tree.keys.first
-              when "InsertStmt"
-                "INSERT statement"
-              when "VariableSetStmt"
-                "SET statement"
-              when "SelectStmt"
-                if (tree["SelectStmt"]["fromClause"].first["JoinExpr"] rescue false)
-                  "JOIN not supported yet"
-                end
-              end
-            return {error: error || "Unknown structure"}
-          end
-
-          select = tree.values.first
-          where = (select["whereClause"] ? parse_where(select["whereClause"]) : []) rescue nil
-          return {error: "Unknown structure"} unless where
-
-          sort = (select["sortClause"] ? parse_sort(select["sortClause"]) : []) rescue []
-
-          {table: table, where: where, sort: sort}
+            end
+          return {error: error || "Unknown structure"}
         end
+
+        select = tree[tree.node.to_s]
+        where = (select.where_clause ? parse_where(select.where_clause) : []) rescue nil
+        return {error: "Unknown structure"} unless where
+
+        sort = (select.sort_clause ? parse_sort(select.sort_clause) : []) rescue []
+
+        {table: table, where: where, sort: sort}
       end
 
       # TODO better row estimation
@@ -300,7 +266,7 @@ module PgHero
         end
       end
 
-      def parse_table_v2(tree)
+      def parse_table(tree)
         case tree.node
         when :select_stmt
           tree.select_stmt.from_clause.first.range_var.relname
@@ -311,77 +277,41 @@ module PgHero
         end
       end
 
-      def parse_table(tree)
-        case tree.keys.first
-        when "SelectStmt"
-          tree["SelectStmt"]["fromClause"].first["RangeVar"]["relname"]
-        when "DeleteStmt"
-          tree["DeleteStmt"]["relation"]["RangeVar"]["relname"]
-        when "UpdateStmt"
-          tree["UpdateStmt"]["relation"]["RangeVar"]["relname"]
-        end
-      end
-
       # TODO capture values
-      def parse_where_v2(tree)
+      def parse_where(tree)
         aexpr = tree.a_expr
 
         if tree.bool_expr
           if tree.bool_expr.boolop == :AND_EXPR
-            tree.bool_expr.args.flat_map { |v| parse_where_v2(v) }
+            tree.bool_expr.args.flat_map { |v| parse_where(v) }
           else
             raise "Not Implemented"
           end
-        elsif aexpr && ["=", "<>", ">", ">=", "<", "<=", "~~", "~~*", "BETWEEN"].include?(aexpr.name.first.string.str)
-          [{column: aexpr.lexpr.column_ref.fields.last.string.str, op: aexpr.name.first.string.str}]
+        elsif aexpr && ["=", "<>", ">", ">=", "<", "<=", "~~", "~~*", "BETWEEN"].include?(aexpr.name.first.string.send(str_method))
+          [{column: aexpr.lexpr.column_ref.fields.last.string.send(str_method), op: aexpr.name.first.string.send(str_method)}]
         elsif tree.null_test
           op = tree.null_test.nulltesttype == :IS_NOT_NULL ? "not_null" : "null"
-          [{column: tree.null_test.arg.column_ref.fields.last.string.str, op: op}]
+          [{column: tree.null_test.arg.column_ref.fields.last.string.send(str_method), op: op}]
         else
           raise "Not Implemented"
         end
       end
 
-      # TODO capture values
-      def parse_where(tree)
-        aexpr = tree["A_Expr"]
-
-        if tree["BoolExpr"]
-          if tree["BoolExpr"]["boolop"] == 0
-            tree["BoolExpr"]["args"].flat_map { |v| parse_where(v) }
-          else
-            raise "Not Implemented"
-          end
-        elsif aexpr && ["=", "<>", ">", ">=", "<", "<=", "~~", "~~*", "BETWEEN"].include?(aexpr["name"].first["String"]["str"])
-          [{column: aexpr["lexpr"]["ColumnRef"]["fields"].last["String"]["str"], op: aexpr["name"].first["String"]["str"]}]
-        elsif tree["NullTest"]
-          op = tree["NullTest"]["nulltesttype"] == 1 ? "not_null" : "null"
-          [{column: tree["NullTest"]["arg"]["ColumnRef"]["fields"].last["String"]["str"], op: op}]
-        else
-          raise "Not Implemented"
-        end
-      end
-
-      def parse_sort_v2(sort_clause)
-        sort_clause.map do |v|
-          {
-            column: v.sort_by.node.column_ref.fields.last.string.str,
-            direction: v.sort_by.sortby_dir == :SORTBY_DESC ? "desc" : "asc"
-          }
-        end
+      def str_method
+        @str_method ||= Gem::Version.new(PgQuery::VERSION) >= Gem::Version.new("4") ? :sval : :str
       end
 
       def parse_sort(sort_clause)
         sort_clause.map do |v|
           {
-            column: v["SortBy"]["node"]["ColumnRef"]["fields"].last["String"]["str"],
-            direction: v["SortBy"]["sortby_dir"] == 2 ? "desc" : "asc"
+            column: v.sort_by.node.column_ref.fields.last.string.send(str_method),
+            direction: v.sort_by.sortby_dir == :SORTBY_DESC ? "desc" : "asc"
           }
         end
       end
 
       def column_stats(schema: nil, table: nil)
-        select_all <<-SQL
+        select_all <<~SQL
           SELECT
             schemaname AS schema,
             tablename AS table,

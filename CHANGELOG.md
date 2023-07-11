@@ -1,3 +1,54 @@
+## 3.3.4 (unreleased)
+
+- Fixed support for aliases in config file
+
+## 3.3.3 (2023-04-18)
+
+- Fixed error with system stats for Azure Database
+
+## 3.3.2 (2023-04-12)
+
+- Fixed error with suggested indexes and empty statements
+
+## 3.3.1 (2023-03-15)
+
+- Fixed error with Uglifier
+
+## 3.3.0 (2023-03-11)
+
+- Improved handling of lock timeouts
+- Improved syntax highlighting
+
+## 3.2.0 (2023-02-21)
+
+- Added support for pg_query 4
+- Added `pghero:clean_space_stats` rake task
+- Added support for specifying retention period with `clean_query_stats` and `clean_space_stats`
+- Removed reset button when historical query stats are enabled
+
+## 3.1.0 (2023-01-04)
+
+- Fixed explain error message leaking data - [more info](https://github.com/ankane/pghero/issues/439)
+- Explain analyze is now opt-in - [more info](https://github.com/ankane/pghero/issues/438)
+- Added support for disabling explain and explain analyze
+- Added support for visualize without explain analyze
+- Added `explain_v2` method
+
+## 3.0.1 (2022-10-09)
+
+- Fixed message when database user does not have permission to reset query stats
+
+## 3.0.0 (2022-09-13)
+
+- Changed `capture_query_stats` to only reset stats for current database in Postgres 12+
+- Changed `reset_query_stats` to only reset stats for current database (use `reset_instance_query_stats` to reset stats for entire instance)
+- Added `visualize_url` option to config
+- Removed `access_key_id`, `secret_access_key`, `region`, and `db_instance_identifier` methods (use `aws_` prefixed methods instead)
+- Dropped support for Linux packages for EOL versions
+- Dropped support for Ruby < 2.7 and Rails < 6
+- Dropped support for pg_query < 2
+- Dropped support for aws-sdk < 2
+
 ## 2.8.3 (2022-05-01)
 
 - Added support for `google-apis-monitoring_v3`

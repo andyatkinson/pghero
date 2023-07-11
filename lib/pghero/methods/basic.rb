@@ -45,7 +45,7 @@ module PgHero
           if ActiveRecord::VERSION::STRING.to_f >= 6.1
             result = result.map(&:symbolize_keys)
           else
-            result = result.map { |row| Hash[row.map { |col, val| [col.to_sym, result.column_types[col].send(:cast_value, val)] }] }
+            result = result.map { |row| row.to_h { |col, val| [col.to_sym, result.column_types[col].send(:cast_value, val)] } }
           end
           if filter_data
             query_columns.each do |column|
@@ -112,15 +112,8 @@ module PgHero
         ::PgHero::Stats.connection
       end
 
-      def insert_stats(table, columns, values)
-        values = values.map { |v| "(#{v.map { |v2| quote(v2) }.join(",")})" }.join(",")
-        columns = columns.map { |v| quote_table_name(v) }.join(",")
-        stats_connection.execute("INSERT INTO #{quote_table_name(table)} (#{columns}) VALUES #{values}")
-      end
-
-      # from ActiveSupport
       def squish(str)
-        str.to_s.gsub(/\A[[:space:]]+/, "").gsub(/[[:space:]]+\z/, "").gsub(/[[:space:]]+/, " ")
+        str.to_s.squish
       end
 
       def add_source(sql)
@@ -133,6 +126,10 @@ module PgHero
 
       def quote_table_name(value)
         connection.quote_table_name(value)
+      end
+
+      def quote_column_name(value)
+        connection.quote_column_name(value)
       end
 
       def unquote(part)

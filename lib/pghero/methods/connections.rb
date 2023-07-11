@@ -3,7 +3,7 @@ module PgHero
     module Connections
       def connections
         if server_version_num >= 90500
-          select_all <<-SQL
+          select_all <<~SQL
             SELECT
               pg_stat_activity.pid,
               datname AS database,
@@ -20,7 +20,7 @@ module PgHero
               pg_stat_activity.pid
           SQL
         else
-          select_all <<-SQL
+          select_all <<~SQL
             SELECT
               pid,
               datname AS database,
@@ -41,7 +41,7 @@ module PgHero
       end
 
       def connection_states
-        states = select_all <<-SQL
+        states = select_all <<~SQL
           SELECT
             state,
             COUNT(*) AS connections
@@ -53,11 +53,11 @@ module PgHero
             2 DESC, 1
         SQL
 
-        Hash[states.map { |s| [s[:state], s[:connections]] }]
+        states.to_h { |s| [s[:state], s[:connections]] }
       end
 
       def connection_sources
-        select_all <<-SQL
+        select_all <<~SQL
           SELECT
             datname AS database,
             usename AS user,

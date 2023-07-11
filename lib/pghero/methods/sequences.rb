@@ -7,7 +7,7 @@ module PgHero
         # it's what information_schema.columns uses
         # also, exclude temporary tables to prevent error
         # when accessing across sessions
-        sequences = select_all <<-SQL
+        sequences = select_all <<~SQL
           SELECT
             n.nspname AS table_schema,
             c.relname AS table,
@@ -84,7 +84,7 @@ module PgHero
       # also adds schema if missing
       def add_sequence_attributes(sequences)
         # fetch data
-        sequence_attributes = select_all <<-SQL
+        sequence_attributes = select_all <<~SQL
           SELECT
             n.nspname AS schema,
             c.relname AS sequence,
@@ -115,7 +115,7 @@ module PgHero
         end
 
         # then populate attributes
-        readable = Hash[sequence_attributes.map { |s| [[s[:schema], s[:sequence]], s[:readable]] }]
+        readable = sequence_attributes.to_h { |s| [[s[:schema], s[:sequence]], s[:readable]] }
         sequences.each do |sequence|
           sequence[:readable] = readable[[sequence[:schema], sequence[:sequence]]] || false
         end
