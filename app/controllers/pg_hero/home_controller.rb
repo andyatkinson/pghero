@@ -293,12 +293,14 @@ module PgHero
       # need to prevent CSRF and DoS
       if request.post? && @query.present?
         begin
+          generic_plan = @database.server_version_num >= 160000 && @query.include?("$1")
+
           explain_options =
             case params[:commit]
             when "Analyze"
               {analyze: true}
             when "Visualize"
-              if @explain_analyze_enabled
+              if @explain_analyze_enabled && !generic_plan
                 {analyze: true, costs: true, verbose: true, buffers: true, format: "json"}
               else
                 {costs: true, verbose: true, format: "json"}
@@ -306,6 +308,8 @@ module PgHero
             else
               {}
             end
+
+          explain_options[:generic_plan] = true if generic_plan
 
           if explain_options[:analyze] && !@explain_analyze_enabled
             render_text "Explain analyze not enabled", status: :bad_request
@@ -320,8 +324,10 @@ module PgHero
           @error =
             if message == "Unsafe statement"
               "Unsafe statement"
-            elsif message.start_with?("PG::ProtocolViolation: ERROR:  bind message supplies 0 parameters")
+            elsif message.start_with?("PG::UndefinedParameter")
               "Can't explain queries with bind parameters"
+            elsif message.include?("EXPLAIN options ANALYZE and GENERIC_PLAN cannot be used together")
+              "Can't analyze queries with bind parameters"
             elsif message.start_with?("PG::SyntaxError")
               "Syntax error with query"
             elsif message.start_with?("PG::QueryCanceled")

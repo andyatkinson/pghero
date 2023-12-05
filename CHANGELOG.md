@@ -1,4 +1,9 @@
-## 3.3.4 (unreleased)
+## 3.4.0 (2023-11-28)
+
+- Added support for explaining normalized queries with Postgres 16
+- Added Docker image for `linux/arm64`
+
+## 3.3.4 (2023-09-05)
 
 - Fixed support for aliases in config file
 
